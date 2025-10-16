@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Disability Overview</title>
+<style>
+  :root {
+    --accent: #704b9e; /* main Purple Parade tone */
+    --accent-light: #8c66c7;
+    --accent-dark: #563583;
+    --bg: #f7f4fb;
+    --fg: #1a102d;
+  }
+
+  body {
+    margin: 0;
+    font: 17px/1.7 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  header {
+    background: linear-gradient(135deg, var(--accent-dark), var(--accent-light));
+    color: #fff;
+    text-align: center;
+    padding: 52px 18px 44px;
+    border-bottom-left-radius: 48px;
+    border-bottom-right-radius: 48px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  }
+
+  header a.back {
+    display: inline-block;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 600;
+    margin-bottom: 10px;
+    opacity: 0.85;
+  }
+
+  header a.back:hover { opacity: 1; }
+
+  header h1 {
+    margin: 8px 0 4px;
+    font-size: clamp(26px, 5vw, 42px);
+    letter-spacing: 0.5px;
+  }
+
+  main {
+    max-width: 860px;
+    margin: -32px auto 60px;
+    padding: 0 18px;
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(88, 55, 133, 0.1);
+    padding: 32px 26px;
+    border: 1px solid rgba(112, 75, 158, 0.2);
+  }
+
+  .card p {
+    margin: 0 0 1.2em;
+    color: #2c2047;
+  }
+
+  a.btn {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    text-decoration: none;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-weight: 700;
+    margin-top: 10px;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+    transition: background 0.2s ease, transform 0.15s ease;
+  }
+
+  a.btn:hover {
+    background: var(--accent-dark);
+    transform: translateY(-1px);
+  }
+
+  @media (max-width: 600px) {
+    header {
+      padding: 40px 12px 32px;
+      border-radius: 0 0 36px 36px;
+    }
+    main { margin-top: -24px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <a href="/" class="back">← Back to landing</a>
+    <h1 id="title">Loading…</h1>
+  </header>
+
+<main>
+  <div class="card" style="max-width: 720px; margin: 40px auto; background: #fff; border-radius: 16px; padding: 32px; box-shadow: 0 8px 24px rgba(0,0,0,0.08);">
+    <div id="icon-wrap" style="text-align:center; margin-bottom: 16px; display:none;">
+      <img id="icon" alt="" style="width:120px; height:120px; object-fit:contain;">
+    </div>
+    <h1 id="title" style="text-align:center; color:#563583;"></h1>
+    <p id="desc"></p>
+    <div id="button-wrap" style="text-align:center; margin-top:24px;">
+      <a class="btn" id="simlink" href="#" target="_blank" style="display:inline-block; background:#704b9e; color:#fff; padding:10px 16px; border-radius:8px; text-decoration:none;">Launch Simulation</a>
+    </div>
+  </div>
+</main>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const id = params.get('id');
+
+if (!id) {
+  document.body.innerHTML = "<p style='text-align:center;margin-top:40px;'>Missing ?id parameter.</p>";
+} else {
+  fetch(`./data/${id}.json`)
+    .then(r => r.json())
+    .then(data => {
+      // Title + description
+      document.title = data.title + " — Overview";
+      document.getElementById('title').textContent = data.title;
+      // Insert description and optional image
+let descHTML = data.description;
+
+// Add image if provided
+if (data.image) {
+  descHTML += `
+    <div style="text-align:center; margin-top:18px;">
+      <img 
+        src="${data.image}" 
+        alt="${data.title}" 
+        style="max-width:100%; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15);"
+      >
+    </div>`;
+}
+
+// Add video if provided
+if (data.video) {
+  descHTML += `
+    <div style="text-align:center; margin-top:24px;">
+      <video controls preload="metadata" style="max-width:100%; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15);">
+        <source src="${data.video}" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>`;
+}
+
+document.getElementById('desc').innerHTML = descHTML;
+
+
+
+      // Icon logic
+      if (data.icon) {
+        document.getElementById('icon').src = data.icon;
+        document.getElementById('icon-wrap').style.display = 'block';
+      }
+
+      // Simulation button logic
+      if (data.simulation) {
+        document.getElementById('simlink').href = data.simulation;
+      } else {
+        document.getElementById('button-wrap').style.display = 'none';
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      document.body.innerHTML = "<p style='text-align:center;margin-top:40px;'>Content not found.</p>";
+    });
+}
+</script>
+</body>
+</html>

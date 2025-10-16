@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mobility Simulation — Out-of-Reach Button</title>
+<style>
+  :root{
+    /* Wall edge the avatar cannot cross (adjust to match your photo) */
+    --wall-x: 68%;
+    /* Avatar track (fixed horizontal line) */
+    --track-y: 82%;
+    --avatar-w: clamp(180px, 27vmin, 300px);
+  }
+
+  html,body { height:100%; margin:0; }
+  body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:#111; color:#222; }
+
+  .scene {
+    position: relative;
+    height: 100vh; max-height: 100dvh;
+    overflow: hidden;
+    touch-action: none;
+    background:#000; /* visible while image loads */
+  }
+
+  /* Background photo (so a wrong path shows a broken icon, not black) */
+  #sceneImg {
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit: contain;
+    background:#000;
+  }
+
+  /* ===== Top panel groups intro + return link so link is always below the text ===== */
+  .top-panel{
+    position:absolute;
+    left:16px; right:16px; top:12px;
+    z-index:3;
+    max-width:min(720px,92vw);
+  }
+
+  .intro{
+    background: rgba(255,255,255,0.9);
+    color:#222;
+    padding:10px 14px;
+    border-radius:10px;
+    box-shadow:0 6px 18px rgba(0,0,0,.15);
+    font-size:.98rem;
+    margin:0 0 8px; /* space above the link */
+  }
+
+  .back-link{
+    display:inline-block;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    font-size: 0.9rem;
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    transition: background 0.2s ease;
+  }
+  .back-link:hover { background: rgba(240, 240, 240, 1); }
+
+  /* Bottom message bubble */
+  .msg{
+    position:absolute; left:16px; right:16px; z-index:3;
+    max-width:min(720px,92vw);
+    background: rgba(255,255,255,0.9);
+    padding:10px 14px; border-radius:10px;
+    box-shadow:0 6px 18px rgba(0,0,0,.15);
+    font-size:.98rem;
+    bottom:12px; display:none;
+  }
+  .msg.show{ display:block; animation:fade .25s ease; }
+  @keyframes fade { from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none} }
+
+  /* Optional wall-limit guide (set display:block to debug) */
+  .wall-line {
+    position:absolute; top:0; bottom:0; width:0; border-left:2px dashed rgba(0,0,0,.15);
+    left: var(--wall-x); transform: translateX(-1px); z-index:1; pointer-events:none; display:none;
+  }
+
+  /* Draggable avatar (horizontal only) */
+  .avatar {
+    position:absolute; z-index:4;
+    left:10%; top: var(--track-y);
+    transform: translate(-50%,-100%); /* anchor bottom-center */
+    width: var(--avatar-w);
+    user-select:none; -webkit-user-drag:none;
+    cursor: grab; touch-action:none;
+    filter: drop-shadow(0 6px 14px rgba(0,0,0,.25));
+  }
+  .avatar.dragging{ cursor:grabbing; }
+
+  /* Small screens: tighten spacing */
+  @media (max-width:600px){
+    .top-panel{ top:10px; left:12px; right:12px; }
+    .intro{ font-size:.95rem; padding:9px 12px; }
+    .back-link{ font-size:.9rem; }
+  }
+</style>
+</head>
+<body>
+  <div class="scene" id="scene" role="application" aria-label="Glass door with wall-mounted button">
+    <!-- BACKGROUND PHOTO -->
+    <img id="sceneImg" alt="Glass door scene">
+
+    <!-- Top group: intro + return link (link always below intro) -->
+    <div class="top-panel">
+      <div class="intro">
+        Use your finger to move the avatar to approach the door.<br>
+        The wall-mounted EXIT button remains out of reach.
+      </div>
+      <a href="../../index.html" class="back-link">← Return to Main Page</a>
+    </div>
+
+    <div class="wall-line" id="wallLine" aria-hidden="true"></div>
+
+    <!-- AVATAR -->
+    <img id="avatar" class="avatar" alt="Wheelchair user reaching" draggable="false" />
+
+    <div class="msg" id="msg">
+      Even close to the doorway, the button’s height and wall position can keep it out of reach.
+      Placement matters for everyday accessibility.
+    </div>
+  </div>
+
+<script>
+/* ---------- filenames relative to /mobility/sim/index.html ---------- */
+const DOOR_IMAGE = "../../assets/mobilitysim.png";             // background photo (glass door + button)
+const AVATAR_SRC = "../../assets/mobilitywheelchairuser.png";  // wheelchair user
+/* -------------------------------------------------------------------- */
+
+const scene   = document.getElementById('scene');
+const sceneImg= document.getElementById('sceneImg');
+const avatar  = document.getElementById('avatar');
+const msg     = document.getElementById('msg');
+
+/* Load background photo */
+sceneImg.src = DOOR_IMAGE;
+
+/* Remove near-white background from the avatar; fallback to original if needed */
+function whiteToAlpha(src, done) {
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, c.width, c.height);
+      const d = data.data, T = 245;
+      for (let i=0;i<d.length;i+=4) {
+        const r=d[i], g=d[i+1], b=d[i+2];
+        if (r>=T && g>=T && b>=T) d[i+3]=0;
+      }
+      ctx.putImageData(data, 0, 0);
+      done(c.toDataURL("image/png"));
+    } catch (e) {
+      console.warn("Transparency conversion failed; using original image.", e);
+      done(src);
+    }
+  };
+  img.onerror = () => { console.error("Avatar image failed to load:", src); done(src); };
+  img.src = src;
+}
+whiteToAlpha(AVATAR_SRC, (url) => { avatar.src = url; });
+
+/* Drag horizontally and clamp at wall edge */
+let dragging=false, offsetX=0;
+
+function getBounds(){
+  const rect = scene.getBoundingClientRect();
+  const wallPct = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wall-x'))/100;
+  const trackPct= parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--track-y'))/100;
+  const wallX = rect.left + rect.width * wallPct;
+  const trackY= rect.top  + rect.height* trackPct;
+  return { rect, wallX, trackY };
+}
+
+function setAvatarX(clientX){
+  const { rect, wallX, trackY } = getBounds();
+  const avRect = avatar.getBoundingClientRect();
+  const minX = rect.left + avRect.width/2 + 8;
+  const maxX = wallX - avRect.width/2 - 6;
+  let x = Math.max(minX, Math.min(maxX, clientX - offsetX));
+  avatar.style.left = ((x - rect.left) / rect.width * 100) + "%";
+  avatar.style.top  = ((trackY - rect.top) / rect.height * 100) + "%";
+}
+
+function down(e){
+  dragging=true; avatar.classList.add('dragging');
+  const r=avatar.getBoundingClientRect();
+  offsetX = e.clientX - (r.left + r.width/2);
+  e.preventDefault();
+}
+function move(e){ if(dragging) setAvatarX(e.clientX); }
+function up(){ if(!dragging) return; dragging=false; avatar.classList.remove('dragging'); msg.classList.add('show'); }
+
+avatar.addEventListener('pointerdown', down);
+window.addEventListener('pointermove', move);
+window.addEventListener('pointerup', up);
+
+window.addEventListener('resize', () => {
+  const center = avatar.getBoundingClientRect().left + avatar.getBoundingClientRect().width/2;
+  setAvatarX(center);
+});
+
+window.addEventListener('load', () => {
+  avatar.style.left = "12%"; // starting position
+});
+</script>
+</body>
+</html>

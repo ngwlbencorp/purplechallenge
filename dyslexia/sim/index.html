@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Dyslexia-style simulation (1s cycling + swaps, 25% cap, no hides)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body { margin:0; padding:24px; background:#fff; color:#111;
+         font:22px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+  #target { max-width: 900px; }
+
+  .dsx-word {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1ch;   /* one fixed character cell per letter */
+  white-space: nowrap;      /* never wrap inside a word */
+}
+.dsx-letter {
+  display: block;           /* grid item fills its 1ch cell */
+  font-kerning: none;
+  font-variant-ligatures: none;
+}
+
+  .fixed-edge { }
+
+  .dsx-jitter { animation: dsx-jitter 700ms infinite ease-in-out; }
+  @keyframes dsx-jitter {
+    0%   { transform: translate(0,0) rotate(0deg); }
+    25%  { transform: translate(-0.5px, 0.4px) rotate(-0.35deg); }
+    50%  { transform: translate(0.7px, -0.6px) rotate(0.45deg); }
+    75%  { transform: translate(-0.4px, 0.3px) rotate(-0.25deg); }
+    100% { transform: translate(0,0) rotate(0deg); }
+  }
+
+  .dsx-crowded { letter-spacing:-0.3px; }
+</style>
+</head>
+<body>
+  <p style="font-size:1.1rem; text-align:center; margin-bottom:18px; color:#222;">
+    Can you decipher the text? It’s about an important consideration when determining what products to build.
+  </p>
+
+  <div id="target" class="dsx-crowded">Loading…</div>
+
+
+<script>
+/* ============================== TEXT ============================== */
+const TEXT =
+"Evaluating a product means balancing the value it offers versus the cost. "
++ "A cheaper option might fail sooner, while a costlier one could save time, effort, or future expenses. "
++ "The real question is whether each dollar spent creates enough benefit, durability, or satisfaction to justify the overall investment.";
+
+/* ============================ PARAMETERS =========================== */
+const INITIAL_INCORRECT_RANGE = [0.05, 0.07];
+const CYCLE_INTERVAL_MS       = 1000;  // per-letter cycling (1s)
+const SWAP_INTERVAL_MS        = 650;   // gentle swaps
+const LETTER_COOLDOWN_MS      = 800;
+const SWAPS_PER_TICK          = 2;
+
+/* ============================== UTILS ============================== */
+const A2Z     = "abcdefghijklmnopqrstuvwxyz".split("");
+const randInt = n => Math.floor(Math.random()*n);
+const choice  = arr => arr[randInt(arr.length)];
+const isAlpha = ch => /[a-z]/i.test(ch);
+const now     = () => performance.now();
+
+const CONFUSE = {
+  a:['e','o','u'], b:['p','h','d'], c:['o','e','g'], d:['b','a'],
+  e:['a','c','o'], f:['t','r'], g:['c','q','o'], h:['n','b','k'],
+  i:['l','j','y'], j:['i','l'], k:['h','x'], l:['i','t'],
+  m:['n','w'], n:['m','h','r'], o:['a','c','u','q'], p:['b','q'],
+  q:['g','p','o'], r:['n','v'], s:['z','x'], t:['f','l'],
+  u:['v','o','a'], v:['u','w','y'], w:['v','u'], x:['z','k'],
+  y:['v','j'], z:['s','x']
+};
+
+function buildPool(orig) {
+  const lower = orig.toLowerCase();
+  const pool = [lower];
+  let candidates = (CONFUSE[lower] || []).map(s => s[0]).filter(c => isAlpha(c) && c !== lower);
+  while (candidates.length < 8) {
+    const r = choice(A2Z);
+    if (r !== lower && !candidates.includes(r)) candidates.push(r);
+  }
+  for (let c of candidates) {
+    if (pool.length >= 4) break;
+    pool.push(c);
+  }
+  return pool.map(c => (orig === orig.toUpperCase() ? c.toUpperCase() : c));
+}
+
+/* ============================== BUILD ============================== */
+const target = document.getElementById('target');
+
+function build(text) {
+  target.textContent = '';
+  const frag = document.createDocumentFragment();
+
+  text.split(/(\s+)/).forEach(token => {
+    if (/\s+/.test(token)) { frag.appendChild(document.createTextNode(token)); return; }
+
+    const wordEl = document.createElement('span');
+    wordEl.className = 'dsx-word';
+
+    const expectedRaw = token.split('');
+    const isLetter    = expectedRaw.map(c => isAlpha(c));
+    const letterIdx   = isLetter.map((v,i)=>v?i:-1).filter(i=>i>=0);
+
+    wordEl._expected = expectedRaw.map(c => c.toLowerCase());
+    wordEl._isLetter = isLetter;
+    const cap = Math.ceil(letterIdx.length * 0.25);
+    wordEl._cap = cap;
+
+    const innerLetterIdx = letterIdx.filter((i,idx) => idx !== 0 && idx !== letterIdx.length-1);
+
+    wordEl._pools = expectedRaw.map((ch,i) => (isLetter[i] && innerLetterIdx.includes(i)) ? buildPool(ch) : [ch]);
+    wordEl._cycleIndex = expectedRaw.map(() => 0);
+    wordEl._lastMut    = expectedRaw.map(() => 0);
+
+    const desiredFrac = INITIAL_INCORRECT_RANGE[0] + Math.random()*(INITIAL_INCORRECT_RANGE[1]-INITIAL_INCORRECT_RANGE[0]);
+    const targetIncorrect = Math.min(cap, Math.ceil(letterIdx.length * desiredFrac));
+
+    const candidates = innerLetterIdx.slice();
+    for (let i=candidates.length-1;i>0;i--){ const j=randInt(i+1); [candidates[i],candidates[j]]=[candidates[j],candidates[i]]; }
+
+    const incorrectSet = new Set();
+    for (let pos of candidates) {
+      if (incorrectSet.size >= targetIncorrect) break;
+      incorrectSet.add(pos);
+    }
+
+    expectedRaw.forEach((ch,i) => {
+      const s = document.createElement('span');
+      s.className = 'dsx-letter dsx-jitter';
+      if (letterIdx.length && (i === letterIdx[0] || i === letterIdx[letterIdx.length-1])) {
+        s.classList.add('fixed-edge');
+        s.textContent = ch;
+      } else if (isLetter[i]) {
+        const pool = wordEl._pools[i];
+        if (incorrectSet.has(i) && pool.length > 1) {
+          const alt = pool[1 + randInt(pool.length-1)];
+          s.textContent = alt;
+          wordEl._cycleIndex[i] = pool.indexOf(alt);
+        } else {
+          s.textContent = pool[0];
+        }
+      } else s.textContent = ch;
+
+      s.style.animationDuration = (600 + Math.random()*500) + 'ms';
+      s.style.animationDelay = (Math.random()*300) + 'ms';
+      wordEl.appendChild(s);
+    });
+
+    frag.appendChild(wordEl);
+  });
+  target.appendChild(frag);
+}
+
+build(TEXT);
+
+/* ========================= CAP & HELPERS ========================= */
+function incorrectCountForWord(w) {
+  const exp = w._expected, isLet = w._isLetter;
+  const kids = w.childNodes;
+  let n=0;
+  for (let i=0;i<kids.length;i++){
+    if (!isLet[i]) continue;
+    const el = kids[i];
+    if (el.classList.contains('fixed-edge')) continue;
+    const ch = (el.textContent || '').toLowerCase();
+    if (ch !== exp[i]) n++;
+  }
+  return n;
+}
+
+/* ======================= CYCLING (1s LOOP) ======================= */
+function cycleLetters() {
+  const words = Array.from(document.querySelectorAll('.dsx-word'));
+  for (const w of words) {
+    const kids = w.childNodes, pools = w._pools, idxes = w._cycleIndex, cap = w._cap, exp = w._expected;
+    let incorrect = incorrectCountForWord(w);
+    for (let i=0; i<kids.length; i++){
+      const el = kids[i];
+      if (!w._isLetter[i] || el.classList.contains('fixed-edge')) continue;
+      const pool = pools[i]; if (!pool || pool.length<=1) continue;
+      const currIdx = idxes[i]??0, nextIdx=(currIdx+1)%pool.length, next=pool[nextIdx];
+      const currWrong=(el.textContent.toLowerCase()!==exp[i]), nextWrong=(next.toLowerCase()!==exp[i]);
+      const after=incorrect+(nextWrong?1:0)-(currWrong?1:0);
+      if(after<=cap){el.textContent=next;idxes[i]=nextIdx;incorrect=after;}
+      else if(currWrong){el.textContent=pool[0];idxes[i]=0;incorrect--;}
+    }
+  }
+}
+
+/* ======================= GENTLE SWAPS ======================= */
+function doSwaps() {
+  const words = Array.from(document.querySelectorAll('.dsx-word'));
+  if (!words.length) return;
+  for (let s=0; s<SWAPS_PER_TICK; s++){
+    const w = choice(words);
+    const kids = w.childNodes, isLet = w._isLetter, exp=w._expected;
+    const letterIdx=isLet.map((v,i)=>v?i:-1).filter(i=>i>=0);
+    const inner=letterIdx.filter((i,idx)=>idx!==0&&idx!==letterIdx.length-1);
+    if(inner.length<2)continue;
+    const i=inner[randInt(inner.length-1)],a=kids[i],b=kids[i+1];
+    const before=incorrectCountForWord(w);
+    const aC=a.textContent.toLowerCase(),bC=b.textContent.toLowerCase();
+    const aWb=aC!==exp[i],bWb=bC!==exp[i+1],aWa=aC!==exp[i+1],bWa=bC!==exp[i];
+    const after=before-(aWb?1:0)-(bWb?1:0)+(aWa?1:0)+(bWa?1:0);
+    if(after>w._cap)continue;
+    const tNow=now();if(tNow-(w._lastMut?.[i]||0)<LETTER_COOLDOWN_MS)continue;
+    if(tNow-(w._lastMut?.[i+1]||0)<LETTER_COOLDOWN_MS)continue;
+    const afterB=b.nextSibling;w.insertBefore(b,a);
+    if(afterB)w.insertBefore(a,afterB);else w.appendChild(a);
+    w._lastMut=w._lastMut||[];w._lastMut[i]=tNow;w._lastMut[i+1]=tNow;
+    const tmp=w._cycleIndex[i];w._cycleIndex[i]=w._cycleIndex[i+1];w._cycleIndex[i+1]=tmp;
+  }
+}
+
+/* ============================== TIMERS ============================== */
+setInterval(cycleLetters, CYCLE_INTERVAL_MS);
+setInterval(doSwaps, SWAP_INTERVAL_MS);
+</script>
+</body>
+</html>

@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ADHD Simulation — Big Popups Over “roadmap” (3s visible)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --bg:#ffffff; --fg:#111; --muted:#666; --brand:#2b6cb0;
+    --shadow:0 10px 28px rgba(0,0,0,.22), 0 3px 10px rgba(0,0,0,.12);
+  }
+  html,body { height:100%; }
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font: 18px/1.7 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    overflow-x:hidden;
+  }
+  .wrap{ max-width: 920px; margin: 20px auto; padding: 16px; }
+  .hint{ color:var(--muted); font-size:.95rem; margin: 0 0 12px; }
+
+  .stage{
+    position: relative;
+    min-height: 70vh;
+    border: 1px dashed #ddd;
+    border-radius: 14px;
+    padding: 16px;
+    overflow: hidden;
+    background:
+      radial-gradient(1200px 600px at 20% -10%, #fafafa, transparent 60%),
+      radial-gradient(1000px 600px at 120% 0%, #f7f9ff, transparent 50%);
+  }
+
+  .target{
+    position: absolute;
+    font-weight: 800;
+    font-size: clamp(28px, 6vw, 44px);
+    text-transform: lowercase;
+    letter-spacing: 0.03em;
+    will-change: transform, opacity, left, top;
+    animation: floaty 2.2s ease-in-out infinite;
+    user-select: none;
+    opacity: 0;
+  }
+  @keyframes floaty{
+    0%{ transform: translateY(0) }
+    50%{ transform: translateY(-2px) }
+    100%{ transform: translateY(0) }
+  }
+
+  .popup{
+    position: absolute;
+    display: flex; align-items: flex-start; gap: 12px;
+    background: #fff; color:#222;
+    border: 1px solid rgba(0,0,0,.08);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    padding: 14px 14px 12px 14px;
+    z-index: 20;
+    width: min(92vw, 420px);
+    min-height: 110px;
+    line-height: 1.35;
+    will-change: transform, opacity, left, top, width, height;
+    animation: bob 3s ease-in-out infinite;
+  }
+  .popup__msg{ font-weight:700; font-size:1.05rem; }
+  .popup__close{
+    margin-left: auto;
+    appearance:none; border:0; border-radius: 10px;
+    padding: 8px 12px; background: var(--brand); color:#fff;
+    font-weight:700; cursor:pointer;
+  }
+  .popup__close:focus-visible{ outline: 3px solid #90b5ea; outline-offset: 2px; }
+
+  @keyframes bob{
+    0%{ transform: translateY(0) }
+    50%{ transform: translateY(-3px) }
+    100%{ transform: translateY(0) }
+  }
+
+  .stage-padding{ position:absolute; inset: 8px; }
+
+  @media (max-width:480px){
+    .popup{ min-height: 96px; }
+    .popup__msg{ font-size: 1rem; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="hint">There is a word on the page that moves around every few seconds and hidden by regenerating popups. Can you find the word?</p>
+    <div id="stage" class="stage">
+      <div class="stage-padding"></div>
+      <div id="target" class="target" aria-hidden="true">roadmap</div>
+    </div>
+  </div>
+
+<script>
+/* ===================== Config ===================== */
+const POPUP_MESSAGES = [
+  "deadlines!",
+  "Approval of Requirement!",
+  "new idea!",
+  "I need to have a quick chat with you",
+  "urgent meeting!",
+  "eh, ah boon wants to have an urgent call now",
+  "is it ready?",
+  "do you want any drinks?",
+  "I need help with this paper",
+  "You have a new message!",
+  "Shopee!",
+  "boss need help with this. very fast one"
+];
+
+const MAX_ACTIVE_POPUPS   = 6;
+const SPAWN_INTERVAL_MS   = 450;               // frequent popups
+const POPUP_AUTO_CLOSE_MS = [5500, 9000];      // auto-expire range
+const TARGET_VISIBLE_MS   = 3000;              // <-- stays at least 3s
+const TARGET_FADE_MS      = 180;               // quick fade in/out
+const TARGET_CYCLE_MS     = TARGET_VISIBLE_MS + 400; // dwell + small buffer
+const SAFE_PAD            = 10;                // stage padding
+
+/* ===================== Elements ===================== */
+const stage  = document.getElementById('stage');
+const target = document.getElementById('target');
+
+/* ===================== Helpers ===================== */
+const rand = (min, max) => Math.random() * (max - min) + min;
+const randInt = (n) => Math.floor(Math.random() * n);
+const choice = (arr) => arr[randInt(arr.length)];
+
+function rectRelToStage(el){
+  const r = el.getBoundingClientRect();
+  const s = stage.getBoundingClientRect();
+  return { x: r.left - s.left, y: r.top - s.top, w: r.width, h: r.height };
+}
+
+function intersects(a,b){
+  return !(a.x+a.w < b.x || b.x+b.w < a.x || a.y+a.h < b.y || b.y+b.h < a.y);
+}
+
+/* Track active popups */
+const active = new Set();
+
+/* Spawn popup (big) at x,y inside stage */
+function spawnPopupAt(x, y, opts={}) {
+  if (active.size >= MAX_ACTIVE_POPUPS && !opts.force) return null;
+
+  const p = document.createElement('div');
+  p.className = 'popup';
+  p.innerHTML = `
+    <div class="popup__msg">${choice(POPUP_MESSAGES)}</div>
+    <button class="popup__close" aria-label="Close popup">Close</button>
+  `;
+  stage.appendChild(p);
+
+  const W = stage.clientWidth, H = stage.clientHeight;
+  const desiredW = Math.min(W - SAFE_PAD*2, Math.max(320, rand(360, 420)));
+  const desiredH = Math.min(H - SAFE_PAD*2, Math.max(110, rand(130, 180)));
+  p.style.width  = desiredW + 'px';
+  p.style.height = desiredH + 'px';
+
+  const px = Math.min(Math.max(x, SAFE_PAD), W - desiredW - SAFE_PAD);
+  const py = Math.min(Math.max(y, SAFE_PAD), H - desiredH - SAFE_PAD);
+  p.style.left = px + 'px';
+  p.style.top  = py + 'px';
+
+  const remove = () => { if (!active.has(p)) return; active.delete(p); p.remove(); };
+  p.querySelector('.popup__close').addEventListener('click', remove);
+
+  // auto-close to keep churn
+  const ttl = rand(POPUP_AUTO_CLOSE_MS[0], POPUP_AUTO_CLOSE_MS[1]);
+  p._timer = setTimeout(remove, ttl);
+
+  active.add(p);
+  return p;
+}
+
+/* Random popup spawner that AVOIDS the target box (so word can be seen after closing blocker) */
+function randomPopupAvoidingTarget() {
+  const W = stage.clientWidth, H = stage.clientHeight;
+  const t = rectRelToStage(target);
+  const margin = 12; // extra clearance around target
+  let tries = 20;
+  while (tries-- > 0) {
+    const w = Math.max(320, rand(360, 420));
+    const h = Math.max(110, rand(130, 180));
+    const x = rand(SAFE_PAD, W - w - SAFE_PAD);
+    const y = rand(SAFE_PAD, H - h - SAFE_PAD);
+    const candidate = {x, y, w, h};
+    const tBox = {x: t.x - margin, y: t.y - margin, w: t.w + margin*2, h: t.h + margin*2};
+    if (!intersects(candidate, tBox)) {
+      spawnPopupAt(x, y);
+      return;
+    }
+  }
+  // fallback if space is tight
+  spawnPopupAt(rand(SAFE_PAD, W-360-SAFE_PAD), rand(SAFE_PAD, H-160-SAFE_PAD));
+}
+
+/* Force a popup to block the target (used only at appearance) */
+function spawnBlockingPopup() {
+  const tr = rectRelToStage(target);
+  const px = tr.x + tr.w/2 - 180 + rand(-40, 40);
+  const py = tr.y + tr.h/2 - 70  + rand(-30, 30);
+  spawnPopupAt(px, py, { force:true });
+}
+
+/* Move/show target for ≥3s, ensure at least one blocker at start */
+function showTargetCycle() {
+  const W = stage.clientWidth, H = stage.clientHeight;
+
+  // random scale jitter (just visual)
+  const scale = rand(0.9, 1.12);
+  target.style.transform = `scale(${scale})`;
+
+  // measure word size (temporarily show if first time)
+  if (target.style.opacity === '0') {
+    target.style.left = '0px';
+    target.style.top = '0px';
+  }
+  const tW = target.offsetWidth || 160;
+  const tH = target.offsetHeight || 46;
+
+  // position within bounds
+  const x = rand(SAFE_PAD, Math.max(SAFE_PAD, W - tW - SAFE_PAD));
+  const y = rand(SAFE_PAD, Math.max(SAFE_PAD, H - tH - SAFE_PAD));
+  target.style.left = x + 'px';
+  target.style.top  = y + 'px';
+
+  // fade in
+  target.style.transition = `opacity ${TARGET_FADE_MS}ms`;
+  target.style.opacity = '1';
+
+  // guarantee one blocker immediately
+  setTimeout(() => { spawnBlockingPopup(); }, 40);
+
+  // keep visible for at least 3s, then fade out and move next cycle
+  setTimeout(() => { target.style.opacity = '0'; }, TARGET_VISIBLE_MS);
+}
+
+/* Keep popups in-bounds on resize */
+function onResize(){
+  const W = stage.clientWidth, H = stage.clientHeight;
+  active.forEach(p => {
+    const rect = p.getBoundingClientRect();
+    const s = stage.getBoundingClientRect();
+    let x = rect.left - s.left;
+    let y = rect.top  - s.top;
+    const pw = p.offsetWidth, ph = p.offsetHeight;
+    x = Math.min(Math.max(x, SAFE_PAD), W - pw - SAFE_PAD);
+    y = Math.min(Math.max(y, SAFE_PAD), H - ph - SAFE_PAD);
+    p.style.left = x + 'px';
+    p.style.top  = y + 'px';
+  });
+}
+
+/* ===================== Start loops ===================== */
+// First appearance
+setTimeout(showTargetCycle, 250);
+// Reposition the word every cycle (visible >= 3s)
+setInterval(showTargetCycle, TARGET_CYCLE_MS);
+// Frequent random popups that avoid the target area
+setInterval(randomPopupAvoidingTarget, SPAWN_INTERVAL_MS);
+
+window.addEventListener('resize', onResize, {passive:true});
+window.addEventListener('orientationchange', onResize);
+</script>
+</body>
+</html>

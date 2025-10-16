@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Pinhole Vision Simulation — Image Exploration</title>
+<style>
+  :root { --r: 36px; } /* fixed radius of viewing hole */
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: #000;
+    font: 18px/1.6 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    color: #fff;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .wrap {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+
+  .hint {
+    color: #bbb;
+    font-size: 0.9rem;
+    margin: 4px 0 12px;
+  }
+
+  .stage {
+    position: relative;
+    height: 72vh;
+    min-height: 360px;
+    border-radius: 12px;
+    overflow: hidden;
+    user-select: none;
+    touch-action: none;
+    background: #000 center/cover no-repeat; /* set by JS after preload */
+  }
+
+  /* black veil with transparent circular hole */
+  .veil {
+    position: absolute;
+    inset: 0;
+    --x: 50%;
+    --y: 50%;
+    background: radial-gradient(
+      circle var(--r) at var(--x) var(--y),
+      rgba(0, 0, 0, 0) 0,
+      rgba(0, 0, 0, 0) calc(var(--r) - 1px),
+      rgba(0, 0, 0, 0.92) var(--r) /* slightly lighter so hole is obvious */
+    );
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  /* unobtrusive error banner if image can’t be loaded */
+  .err {
+    position: absolute; inset: 0;
+    display: none; place-items: center;
+    background: rgba(0,0,0,.6);
+    text-align: center; padding: 12px;
+    font-size: .95rem;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="hint">Move your finger to explore the image through the pinhole.</p>
+    <div id="stage" class="stage">
+      <div id="veil" class="veil" aria-hidden="true"></div>
+      <div id="err" class="err">
+        <div>
+          <strong>Background image not found.</strong><br/>
+          Place <code>/assets/pinhole.jpg</code> or <code>/assets/pinhole.png</code> in your site, or update the paths in the script.
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ---------- CONFIG: paths you want to try (in order) ---------- */
+const CANDIDATE_IMAGES = [
+  "/assets/pinhole.jpg",
+  "/assets/pinhole.png"
+];
+
+/* ---------- Elements ---------- */
+const stage = document.getElementById('stage');
+const veil  = document.getElementById('veil');
+const errEl = document.getElementById('err');
+
+/* ---------- Preload helper that resolves first valid path ---------- */
+function preloadFirst(paths){
+  return new Promise((resolve, reject) => {
+    let i = 0;
+    const tryNext = () => {
+      if (i >= paths.length) return reject(new Error("no image found"));
+      const img = new Image();
+      img.onload  = () => resolve(paths[i]);
+      img.onerror = () => { i++; tryNext(); };
+      img.src = paths[i] + (paths[i].includes('?') ? '&' : '?') + 'v=' + Date.now(); // bust cache
+    };
+    tryNext();
+  });
+}
+
+/* ---------- Smooth hole movement ---------- */
+const hole = { tx: 0, ty: 0, x: 0, y: 0 };
+const EASE = 0.15;
+
+function setHoleTarget(e) {
+  const rect = stage.getBoundingClientRect();
+  const cx = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+  const cy = Math.max(0, Math.min(e.clientY - rect.top,  rect.height));
+  hole.tx = cx; hole.ty = cy;
+}
+
+function applyHole(x, y) {
+  const rect = stage.getBoundingClientRect();
+  veil.style.setProperty("--x", (x / rect.width) * 100 + "%");
+  veil.style.setProperty("--y", (y / rect.height) * 100 + "%");
+}
+
+function animate() {
+  hole.x += (hole.tx - hole.x) * EASE;
+  hole.y += (hole.ty - hole.y) * EASE;
+  applyHole(hole.x, hole.y);
+  requestAnimationFrame(animate);
+}
+
+function centerHole() {
+  const rect = stage.getBoundingClientRect();
+  hole.x = hole.tx = rect.width / 2;
+  hole.y = hole.ty = rect.height / 2;
+  applyHole(hole.x, hole.y);
+}
+
+/* ---------- Init ---------- */
+(function init(){
+  // 1) Preload the background image (tries .jpg then .png)
+  preloadFirst(CANDIDATE_IMAGES)
+    .then(path => {
+      stage.style.backgroundImage = `url("${path}")`;
+      // 2) Start the pinhole centered so it’s visible immediately
+      requestAnimationFrame(() => {
+        centerHole();
+        animate();
+      });
+    })
+    .catch(() => {
+      // Show helpful error overlay instead of “nothing”
+      errEl.style.display = "grid";
+      requestAnimationFrame(() => {
+        centerHole();
+        animate();
+      });
+    });
+
+  // 3) Track pointer (mouse + touch)
+  // Support both on the stage and veil so it works even if finger starts outside the hole
+  ['pointermove','mousemove'].forEach(ev => {
+    stage.addEventListener(ev, setHoleTarget, {passive:true});
+    veil.addEventListener(ev,  setHoleTarget, {passive:true});
+  });
+
+  // Recenter on rotate/resize (keeps CSS percentages in sync)
+  window.addEventListener('orientationchange', centerHole);
+  window.addEventListener('resize', centerHole);
+})();
+</script>
+</body>
+</html>
