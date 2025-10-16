@@ -1,5 +1,5 @@
 {
   "title": "Dyslexia",
   "description": "Dyslexia affects how the brain processes written symbols. People may experience letter swapping, crowding, or fluctuating focus that makes reading effortful and fatiguing. Move on to the simulation to experience the effect of unstable text.",
-  "simulation": "/dyslexia/sim/"
+  "simulation": "./dyslexia/sim/"
 }

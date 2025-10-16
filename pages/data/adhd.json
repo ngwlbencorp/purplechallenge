@@ -1,5 +1,5 @@
 {
   "title": "ADHD",
   "description": "<p>ADHD affects attention, impulse control, and energy regulation. A person might find it difficult to focus, stay organised, or sit still for long.</p><p>It can bring creativity, spontaneity, and hyper-focus on areas of interest. Structure, understanding, and clear routines can help manage daily challenges.</p><p> Move on to the simulation to experience the impact of distractions ",
-  "simulation": "/adhd/sim/"
+  "simulation": "./adhd/sim/"
 }

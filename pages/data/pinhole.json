@@ -1,5 +1,5 @@
 {
   "title": "Visual Impairment (Pinhole Sight)",
   "description": "<p>Visual impairment ranges from partial sight to complete blindness. It can affect how clearly, widely, or comfortably a person sees. </p><p>Some conditions restrict usable vision to a narrow cone. Move on to the simulation to experience a scene through a small circular window.</p>",
-  "simulation": "/pinhole/sim/"
+  "simulation": "./pinhole/sim/"
 }
