@@ -1,4 +1,14 @@
 <!doctype html>
+<script>
+  // Resolve any relative path (from JSON) against this page's URL (/pages/disability.html)
+  function resolveFromPages(p) {
+    // Absolute http(s) URLs pass through unchanged
+    if (/^https?:\/\//i.test(p)) return p;
+    // Use URL resolver to compute a proper absolute URL that keeps the /<repo>/ subpath
+    return new URL(p, window.location.href).toString();
+  }
+</script>
+
 <html lang="en">
 <head>
 <meta charset="utf-8" />
