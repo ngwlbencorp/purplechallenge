@@ -33,6 +33,33 @@
   }
 
   .dsx-crowded { letter-spacing:-0.3px; }
+  
+  /* Top panel holds the return link in a fixed position */
+  .top-panel{
+    position:absolute;
+    left:16px; right:16px; top:12px;
+    z-index:9999;             /* high to sit above canvas/images */
+    max-width:min(720px,92vw);
+  }
+
+  .back-link{
+    display:inline-block;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    font-size: 0.9rem;
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    transition: background 0.2s ease;
+  }
+  .back-link:hover { background: rgba(240, 240, 240, 1); }
+
+  /* Small screens: tighten spacing */
+  @media (max-width:600px){
+    .top-panel{ top:10px; left:12px; right:12px; }
+    .back-link{ font-size:.9rem; }
+  }
 </style>
 </head>
 <body>
@@ -41,6 +68,9 @@
   </p>
 
   <div id="target" class="dsx-crowded">Loading…</div>
+<div class="top-panel">
+  <a href="../../index.html" class="back-link">← Return to Main Page</a>
+</div>
 
 
 <script>
