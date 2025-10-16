@@ -1,13 +1,15 @@
 <!doctype html>
 <script>
-  // Resolve any relative path (from JSON) against this page's URL (/pages/disability.html)
-  function resolveFromPages(p) {
-    // Absolute http(s) URLs pass through unchanged
-    if (/^https?:\/\//i.test(p)) return p;
-    // Use URL resolver to compute a proper absolute URL that keeps the /<repo>/ subpath
-    return new URL(p, window.location.href).toString();
+  // Normalize JSON-provided paths so they work from /pages/disability.html
+  function fromPages(p) {
+    if (!p) return p;
+    if (/^https?:\/\//i.test(p)) return p;       // absolute URL
+    if (p.startsWith('../')) return p;           // already correct
+    if (p.startsWith('./')) return p.replace('./', '../');  // ./foo -> ../foo
+    return '../' + p.replace(/^\/+/, '');        // assets/x.png -> ../assets/x.png
   }
 </script>
+
 
 <html lang="en">
 <head>
@@ -105,7 +107,7 @@
 </head>
 <body>
   <header>
-    <a href="./" class="back">← Back to landing</a>
+    <a href="../" class="back">← Back to landing</a>
     <h1 id="title">Loading…</h1>
   </header>
 
@@ -114,7 +116,6 @@
     <div id="icon-wrap" style="text-align:center; margin-bottom: 16px; display:none;">
       <img id="icon" alt="" style="width:120px; height:120px; object-fit:contain;">
     </div>
-    <h1 id="title" style="text-align:center; color:#563583;"></h1>
     <p id="desc"></p>
     <div id="button-wrap" style="text-align:center; margin-top:24px;">
       <a class="btn" id="simlink" href="#" target="_blank" style="display:inline-block; background:#704b9e; color:#fff; padding:10px 16px; border-radius:8px; text-decoration:none;">Launch Simulation</a>
@@ -130,58 +131,58 @@ if (!id) {
   document.body.innerHTML = "<p style='text-align:center;margin-top:40px;'>Missing ?id parameter.</p>";
 } else {
   fetch(`./data/${id}.json`)
-    .then(r => r.json())
-    .then(data => {
-      // Title + description
-      document.title = data.title + " — Overview";
-      document.getElementById('title').textContent = data.title;
-      // Insert description and optional image
-let descHTML = data.description;
+  .then(r => r.json())
+  .then(data => {
+    // Titles (avoid duplicate IDs)
+    document.title = `${data.title} — Overview`;
+    document.querySelector('header h1').textContent = data.title;
 
-// Add image if provided
-if (data.image) {
-  descHTML += `
-    <div style="text-align:center; margin-top:18px;">
-      <img 
-        src="${data.image}" 
-        alt="${data.title}" 
-        style="max-width:100%; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15);"
-      >
-    </div>`;
-}
+    // Description + optional image/video
+    let descHTML = data.description || '';
 
-// Add video if provided
-if (data.video) {
-  descHTML += `
-    <div style="text-align:center; margin-top:24px;">
-      <video controls preload="metadata" style="max-width:100%; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15);">
-        <source src="${data.video}" type="video/mp4">
-        Your browser does not support the video tag.
-      </video>
-    </div>`;
-}
+    if (data.image) {
+      const imageURL = fromPages(data.image);
+      descHTML += `
+        <div style="text-align:center; margin-top:18px;">
+          <img 
+            src="${imageURL}" 
+            alt="${data.title || ''}" 
+            style="max-width:100%; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15);"
+          >
+        </div>`;
+    }
 
-document.getElementById('desc').innerHTML = descHTML;
+    if (data.video) {
+      const videoURL = fromPages(data.video);
+      descHTML += `
+        <div style="text-align:center; margin-top:24px;">
+          <video controls preload="metadata" style="max-width:100%; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.15);">
+            <source src="${videoURL}" type="video/mp4">
+            Your browser does not support the video tag.
+          </video>
+        </div>`;
+    }
 
+    document.getElementById('desc').innerHTML = descHTML;
 
+    // Icon (optional)
+    if (data.icon) {
+      document.getElementById('icon').src = fromPages(data.icon);
+      document.getElementById('icon-wrap').style.display = 'block';
+    }
 
-      // Icon logic
-      if (data.icon) {
-        document.getElementById('icon').src = data.icon;
-        document.getElementById('icon-wrap').style.display = 'block';
-      }
+    // Simulation button
+    if (data.simulation) {
+      document.getElementById('simlink').href = fromPages(data.simulation);
+    } else {
+      document.getElementById('button-wrap').style.display = 'none';
+    }
+  })
+  .catch(err => {
+    console.error(err);
+    document.body.innerHTML = "<p style='text-align:center;margin-top:40px;'>Content not found.</p>";
+  });
 
-      // Simulation button logic
-      if (data.simulation) {
-        document.getElementById('simlink').href = data.simulation;
-      } else {
-        document.getElementById('button-wrap').style.display = 'none';
-      }
-    })
-    .catch(err => {
-      console.error(err);
-      document.body.innerHTML = "<p style='text-align:center;margin-top:40px;'>Content not found.</p>";
-    });
 }
 </script>
 </body>
